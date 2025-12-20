@@ -1,0 +1,7 @@
+project_id = "zrrffsjbfkphridqyais"
+
+[functions.sync-daftra]
+verify_jwt = false
+
+[functions.document-actions]
+verify_jwt = true
