@@ -4619,6 +4619,69 @@ export type Database = {
       }
     }
     Views: {
+      app_settings_public_safe: {
+        Row: {
+          app_logo_url: string | null
+          app_name: string | null
+          background_color: string | null
+          company_address: string | null
+          company_email: string | null
+          company_phone: string | null
+          default_currency: string | null
+          default_language: string | null
+          enable_technician_rating: boolean | null
+          google_maps_enabled: boolean | null
+          id: string | null
+          map_style: string | null
+          primary_color: string | null
+          secondary_color: string | null
+          show_footer: boolean | null
+          show_technicians_on_map: boolean | null
+          theme_mode: string | null
+          timezone: string | null
+        }
+        Insert: {
+          app_logo_url?: string | null
+          app_name?: string | null
+          background_color?: string | null
+          company_address?: string | null
+          company_email?: string | null
+          company_phone?: string | null
+          default_currency?: string | null
+          default_language?: string | null
+          enable_technician_rating?: boolean | null
+          google_maps_enabled?: boolean | null
+          id?: string | null
+          map_style?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          show_footer?: boolean | null
+          show_technicians_on_map?: boolean | null
+          theme_mode?: string | null
+          timezone?: string | null
+        }
+        Update: {
+          app_logo_url?: string | null
+          app_name?: string | null
+          background_color?: string | null
+          company_address?: string | null
+          company_email?: string | null
+          company_phone?: string | null
+          default_currency?: string | null
+          default_language?: string | null
+          enable_technician_rating?: boolean | null
+          google_maps_enabled?: boolean | null
+          id?: string | null
+          map_style?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          show_footer?: boolean | null
+          show_technicians_on_map?: boolean | null
+          theme_mode?: string | null
+          timezone?: string | null
+        }
+        Relationships: []
+      }
       app_settings_safe: {
         Row: {
           allow_self_registration: boolean | null
@@ -5514,6 +5577,15 @@ export type Database = {
           timezone: string
         }[]
       }
+      get_search_statistics: {
+        Args: { project_id_param?: string; search_query: string }
+        Returns: {
+          avg_relevance: number
+          by_file_type: Json
+          by_project: Json
+          total_results: number
+        }[]
+      }
       get_smtp_settings: {
         Args: never
         Returns: {
@@ -5575,6 +5647,25 @@ export type Database = {
       recalc_request_totals: {
         Args: { p_request_id: string }
         Returns: undefined
+      }
+      search_files: {
+        Args: {
+          file_type_param?: string
+          limit_count?: number
+          offset_count?: number
+          project_id_param?: string
+          search_query: string
+        }
+        Returns: {
+          file_size: number
+          file_type: string
+          id: string
+          original_filename: string
+          project_name: string
+          relevance_score: number
+          storage_url: string
+          text_content_preview: string
+        }[]
       }
     }
     Enums: {
