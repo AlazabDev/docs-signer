@@ -779,6 +779,8 @@ export type Database = {
       }
       documents: {
         Row: {
+          ai_extracted_data: Json | null
+          ai_summary: string | null
           assigned_approver_id: string | null
           assigned_reviewer_id: string | null
           client_email: string | null
@@ -788,6 +790,8 @@ export type Database = {
           currency: string
           daftra_id: string | null
           date: string
+          file_hash: string | null
+          file_url: string | null
           html_url: string | null
           id: string
           number: string
@@ -801,6 +805,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_extracted_data?: Json | null
+          ai_summary?: string | null
           assigned_approver_id?: string | null
           assigned_reviewer_id?: string | null
           client_email?: string | null
@@ -810,6 +816,8 @@ export type Database = {
           currency?: string
           daftra_id?: string | null
           date?: string
+          file_hash?: string | null
+          file_url?: string | null
           html_url?: string | null
           id?: string
           number: string
@@ -823,6 +831,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_extracted_data?: Json | null
+          ai_summary?: string | null
           assigned_approver_id?: string | null
           assigned_reviewer_id?: string | null
           client_email?: string | null
@@ -832,6 +842,8 @@ export type Database = {
           currency?: string
           daftra_id?: string | null
           date?: string
+          file_hash?: string | null
+          file_url?: string | null
           html_url?: string | null
           id?: string
           number?: string
