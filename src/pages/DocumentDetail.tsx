@@ -1,12 +1,13 @@
 import { useParams, Link } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { mockDocuments, mockComments, mockVersions, mockAuditLogs } from '@/data/mockDocuments';
-import { STATUS_LABELS, STATUS_CLASSES, DOCUMENT_TYPE_LABELS } from '@/types/document';
+import { useDocument, useDocumentComments, useDocumentVersions, useDocumentAuditLogs, useAddComment, useUpdateDocumentStatus } from '@/hooks/useDocuments';
+import { STATUS_LABELS, STATUS_CLASSES, DOCUMENT_TYPE_LABELS, DocumentStatus } from '@/types/document';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { 
   ArrowRight, 
@@ -24,7 +25,8 @@ import {
   Building2,
   Mail,
   DollarSign,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -32,15 +34,53 @@ export default function DocumentDetail() {
   const { id } = useParams();
   const [newComment, setNewComment] = useState('');
   
-  const document = mockDocuments.find(d => d.id === id);
-  const comments = mockComments.filter(c => c.documentId === id);
-  const versions = mockVersions.filter(v => v.documentId === id);
-  const auditLogs = mockAuditLogs.filter(l => l.entityId === id);
+  const { data: document, isLoading } = useDocument(id || '');
+  const { data: comments = [] } = useDocumentComments(id || '');
+  const { data: versions = [] } = useDocumentVersions(id || '');
+  const { data: auditLogs = [] } = useDocumentAuditLogs(id);
+  
+  const addComment = useAddComment();
+  const updateStatus = useUpdateDocumentStatus();
+
+  const handleAddComment = () => {
+    if (!newComment.trim() || !id) return;
+    
+    addComment.mutate({
+      document_id: id,
+      text: newComment,
+      user_name: 'المستخدم الحالي', // TODO: Get from auth
+    }, {
+      onSuccess: () => setNewComment(''),
+    });
+  };
+
+  const handleStatusUpdate = (status: string) => {
+    if (!id) return;
+    updateStatus.mutate({ id, status });
+  };
+
+  if (isLoading) {
+    return (
+      <MainLayout title="جاري التحميل...">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Skeleton className="h-96 w-full rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+          <div className="space-y-6">
+            <Skeleton className="h-48 w-full rounded-xl" />
+            <Skeleton className="h-64 w-full rounded-xl" />
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
 
   if (!document) {
     return (
       <MainLayout title="المستند غير موجود">
         <div className="text-center py-12">
+          <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <p className="text-muted-foreground">لم يتم العثور على المستند المطلوب</p>
           <Button asChild className="mt-4">
             <Link to="/documents">العودة للمستندات</Link>
@@ -76,8 +116,11 @@ export default function DocumentDetail() {
     }).format(new Date(dateString));
   };
 
+  const docType = document.type as 'invoice' | 'quote';
+  const docStatus = document.status as DocumentStatus;
+
   return (
-    <MainLayout title={document.number} subtitle={DOCUMENT_TYPE_LABELS[document.type]}>
+    <MainLayout title={document.number} subtitle={DOCUMENT_TYPE_LABELS[docType]}>
       {/* Back Button */}
       <Link 
         to="/documents" 
@@ -102,9 +145,9 @@ export default function DocumentDetail() {
                   <Download className="w-4 h-4" />
                   تحميل
                 </Button>
-                {document.htmlUrl && (
+                {document.html_url && (
                   <Button variant="outline" size="sm" className="gap-2" asChild>
-                    <a href={document.htmlUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={document.html_url} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="w-4 h-4" />
                       فتح في دفترة
                     </a>
@@ -112,15 +155,25 @@ export default function DocumentDetail() {
                 )}
               </div>
             </div>
-            <div className="aspect-[3/4] bg-gradient-to-b from-muted/30 to-muted/10 flex items-center justify-center">
-              <div className="text-center">
-                <FileText className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
-                <p className="text-muted-foreground">معاينة المستند</p>
-                <p className="text-sm text-muted-foreground/60 mt-1">
-                  سيتم عرض PDF هنا عند الاتصال بـ Lovable Cloud
-                </p>
+            {document.file_url || document.pdf_url ? (
+              <div className="bg-muted">
+                <iframe
+                  src={document.file_url || document.pdf_url || ''}
+                  className="w-full h-[600px]"
+                  title="Document Preview"
+                />
               </div>
-            </div>
+            ) : (
+              <div className="aspect-[3/4] bg-gradient-to-b from-muted/30 to-muted/10 flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+                  <p className="text-muted-foreground">لا يوجد ملف مرفق</p>
+                  <p className="text-sm text-muted-foreground/60 mt-1">
+                    يمكنك رفع ملف من صفحة التفاصيل
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tabs */}
@@ -146,7 +199,7 @@ export default function DocumentDetail() {
                 <div className="flex gap-3">
                   <Avatar className="w-10 h-10">
                     <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                      أم
+                      م
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -157,8 +210,17 @@ export default function DocumentDetail() {
                       className="min-h-[80px] resize-none"
                     />
                     <div className="flex justify-end mt-2">
-                      <Button size="sm" className="gap-2">
-                        <Send className="w-4 h-4" />
+                      <Button 
+                        size="sm" 
+                        className="gap-2"
+                        onClick={handleAddComment}
+                        disabled={!newComment.trim() || addComment.isPending}
+                      >
+                        {addComment.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
                         إرسال
                       </Button>
                     </div>
@@ -167,76 +229,88 @@ export default function DocumentDetail() {
 
                 {/* Comments List */}
                 <div className="border-t border-border pt-4 space-y-4">
-                  {comments.map((comment) => (
-                    <div key={comment.id} className="flex gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback className="bg-muted text-muted-foreground text-sm">
-                          {comment.userName.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{comment.userName}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(comment.createdAt)}
-                          </span>
+                  {comments.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">لا توجد تعليقات بعد</p>
+                  ) : (
+                    comments.map((comment) => (
+                      <div key={comment.id} className="flex gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarFallback className="bg-muted text-muted-foreground text-sm">
+                            {comment.user_name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{comment.user_name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatDate(comment.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground mt-1">{comment.text}</p>
                         </div>
-                        <p className="text-sm text-foreground mt-1">{comment.text}</p>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             </TabsContent>
 
             <TabsContent value="versions" className="mt-4">
               <div className="glass-card rounded-xl p-4">
-                <div className="space-y-3">
-                  {versions.map((version) => (
-                    <div 
-                      key={version.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <span className="font-bold text-primary">v{version.versionNumber}</span>
+                {versions.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">لا توجد إصدارات</p>
+                ) : (
+                  <div className="space-y-3">
+                    {versions.map((version) => (
+                      <div 
+                        key={version.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <span className="font-bold text-primary">v{version.version_number}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">الإصدار {version.version_number}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {version.created_by || 'النظام'} • {formatDate(version.created_at)}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">الإصدار {version.versionNumber}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {version.createdBy} • {formatDate(version.createdAt)}
-                          </p>
-                        </div>
+                        <Badge variant="outline">{version.source === 'daftra' ? 'دفترة' : 'رفع يدوي'}</Badge>
                       </div>
-                      <Badge variant="outline">{version.source === 'daftra' ? 'دفترة' : 'رفع يدوي'}</Badge>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </TabsContent>
 
             <TabsContent value="audit" className="mt-4">
               <div className="glass-card rounded-xl p-4">
-                <div className="space-y-3">
-                  {auditLogs.map((log) => (
-                    <div 
-                      key={log.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-primary" />
-                      <div className="flex-1">
-                        <p className="text-sm">
-                          <span className="font-medium">{log.actorName}</span>
-                          {' '}
-                          <span className="text-muted-foreground">{log.action}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDate(log.createdAt)}
-                        </p>
+                {auditLogs.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">لا يوجد سجل</p>
+                ) : (
+                  <div className="space-y-3">
+                    {auditLogs.map((log) => (
+                      <div 
+                        key={log.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-primary" />
+                        <div className="flex-1">
+                          <p className="text-sm">
+                            <span className="font-medium">{log.actor_name}</span>
+                            {' '}
+                            <span className="text-muted-foreground">{log.action}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {formatDate(log.created_at)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -248,34 +322,73 @@ export default function DocumentDetail() {
           <div className="glass-card rounded-xl p-5 animate-slide-up" style={{ animationDelay: '50ms' }}>
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-medium text-muted-foreground">الحالة</span>
-              <span className={cn("status-badge", STATUS_CLASSES[document.status])}>
-                {STATUS_LABELS[document.status]}
+              <span className={cn("status-badge", STATUS_CLASSES[docStatus])}>
+                {STATUS_LABELS[docStatus]}
               </span>
             </div>
 
             <div className="space-y-2">
               {document.status === 'in_review' && (
                 <>
-                  <Button className="w-full gap-2" variant="default">
-                    <CheckCircle className="w-4 h-4" />
+                  <Button 
+                    className="w-full gap-2" 
+                    variant="default"
+                    onClick={() => handleStatusUpdate('approved')}
+                    disabled={updateStatus.isPending}
+                  >
+                    {updateStatus.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="w-4 h-4" />
+                    )}
                     اعتماد المستند
                   </Button>
-                  <Button className="w-full gap-2" variant="outline">
+                  <Button 
+                    className="w-full gap-2" 
+                    variant="outline"
+                    onClick={() => handleStatusUpdate('needs_fix')}
+                    disabled={updateStatus.isPending}
+                  >
                     <AlertCircle className="w-4 h-4" />
                     طلب تعديل
                   </Button>
                 </>
               )}
               {document.status === 'ready_to_approve' && (
-                <Button className="w-full gap-2" variant="default">
-                  <CheckCircle className="w-4 h-4" />
+                <Button 
+                  className="w-full gap-2" 
+                  variant="default"
+                  onClick={() => handleStatusUpdate('approved')}
+                  disabled={updateStatus.isPending}
+                >
+                  {updateStatus.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
                   اعتماد المستند
                 </Button>
               )}
               {document.status === 'approved' && (
-                <Button className="w-full gap-2" variant="default">
+                <Button 
+                  className="w-full gap-2" 
+                  variant="default"
+                  onClick={() => handleStatusUpdate('signed')}
+                  disabled={updateStatus.isPending}
+                >
                   <PenTool className="w-4 h-4" />
                   توقيع المستند
+                </Button>
+              )}
+              {document.status === 'draft' && (
+                <Button 
+                  className="w-full gap-2" 
+                  variant="default"
+                  onClick={() => handleStatusUpdate('in_review')}
+                  disabled={updateStatus.isPending}
+                >
+                  <Send className="w-4 h-4" />
+                  إرسال للمراجعة
                 </Button>
               )}
             </div>
@@ -289,16 +402,18 @@ export default function DocumentDetail() {
                 <Building2 className="w-5 h-5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">العميل</p>
-                  <p className="font-medium">{document.clientName}</p>
+                  <p className="font-medium">{document.client_name}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Mail className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
-                  <p className="text-sm">{document.clientEmail}</p>
+              {document.client_email && (
+                <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">البريد الإلكتروني</p>
+                    <p className="text-sm">{document.client_email}</p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-muted-foreground" />
                 <div>
@@ -315,13 +430,15 @@ export default function DocumentDetail() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">آخر مزامنة</p>
-                  <p className="text-sm">{formatDate(document.syncedAt)}</p>
+              {document.synced_at && (
+                <div className="flex items-center gap-3">
+                  <Clock className="w-5 h-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">آخر مزامنة</p>
+                    <p className="text-sm">{formatDate(document.synced_at)}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -331,14 +448,14 @@ export default function DocumentDetail() {
             <Badge 
               className={cn(
                 "w-full justify-center py-2 text-sm",
-                document.paymentStatus === 'paid' && 'bg-status-approved hover:bg-status-approved',
-                document.paymentStatus === 'partial' && 'bg-status-review hover:bg-status-review',
-                document.paymentStatus === 'unpaid' && 'bg-status-needsfix hover:bg-status-needsfix'
+                document.payment_status === 'paid' && 'bg-status-approved hover:bg-status-approved',
+                document.payment_status === 'partial' && 'bg-status-review hover:bg-status-review',
+                document.payment_status === 'unpaid' && 'bg-status-needsfix hover:bg-status-needsfix'
               )}
             >
-              {document.paymentStatus === 'paid' && 'مدفوع بالكامل'}
-              {document.paymentStatus === 'partial' && 'مدفوع جزئياً'}
-              {document.paymentStatus === 'unpaid' && 'غير مدفوع'}
+              {document.payment_status === 'paid' && 'مدفوع بالكامل'}
+              {document.payment_status === 'partial' && 'مدفوع جزئياً'}
+              {document.payment_status === 'unpaid' && 'غير مدفوع'}
             </Badge>
           </div>
         </div>

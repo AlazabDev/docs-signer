@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { DocumentsTable } from '@/components/documents/DocumentsTable';
 import { DocumentCard } from '@/components/documents/DocumentCard';
-import { mockDocuments } from '@/data/mockDocuments';
-import { DocumentStatus, STATUS_LABELS } from '@/types/document';
+import { useDocuments, Document as DBDocument } from '@/hooks/useDocuments';
+import { STATUS_LABELS, DocumentStatus } from '@/types/document';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,32 +19,84 @@ import {
   Filter, 
   LayoutGrid, 
   List,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
+// Transform DB document to UI document format
+function transformDocument(doc: DBDocument) {
+  return {
+    id: doc.id,
+    daftraId: doc.daftra_id || '',
+    type: doc.type as 'invoice' | 'quote',
+    number: doc.number,
+    clientName: doc.client_name,
+    clientEmail: doc.client_email || '',
+    total: doc.total,
+    currency: doc.currency,
+    date: doc.date,
+    status: doc.status as DocumentStatus,
+    paymentStatus: doc.payment_status as 'paid' | 'partial' | 'unpaid',
+    pdfUrl: doc.pdf_url || undefined,
+    htmlUrl: doc.html_url || undefined,
+    fileUrl: doc.file_url || undefined,
+    syncedAt: doc.synced_at || undefined,
+    createdAt: doc.created_at,
+    updatedAt: doc.updated_at,
+  };
+}
 
 export default function Documents() {
   const [searchParams] = useSearchParams();
   const statusFilter = searchParams.get('status') as DocumentStatus | null;
+  const queryClient = useQueryClient();
   
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>(statusFilter || 'all');
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const filteredDocuments = mockDocuments.filter((doc) => {
-    const matchesSearch = 
-      doc.number.toLowerCase().includes(search.toLowerCase()) ||
-      doc.clientName.toLowerCase().includes(search.toLowerCase());
-    
-    const matchesStatus = selectedStatus === 'all' || doc.status === selectedStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const { data: documents = [], isLoading, refetch } = useDocuments(selectedStatus, debouncedSearch);
+
+  const transformedDocuments = documents.map(transformDocument);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch(
+        `https://zrrffsjbfkphridqyais.supabase.co/functions/v1/sync-daftra`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+      
+      if (!response.ok) throw new Error('Sync failed');
+      
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['documentStats'] });
+      toast.success('تمت المزامنة بنجاح');
+    } catch (error) {
+      toast.error('فشلت المزامنة');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <MainLayout 
       title="المستندات" 
-      subtitle={`${filteredDocuments.length} مستند`}
+      subtitle={`${transformedDocuments.length} مستند`}
     >
       {/* Filters */}
       <div className="glass-card rounded-xl p-4 mb-6 animate-fade-in">
@@ -101,25 +153,38 @@ export default function Documents() {
           </div>
 
           {/* Sync Button */}
-          <Button variant="outline" className="gap-2">
-            <RefreshCw className="w-4 h-4" />
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={handleSync}
+            disabled={isSyncing}
+          >
+            {isSyncing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
             مزامنة
           </Button>
         </div>
       </div>
 
-      {/* Documents */}
-      {viewMode === 'table' ? (
-        <DocumentsTable documents={filteredDocuments} />
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      ) : viewMode === 'table' ? (
+        <DocumentsTable documents={transformedDocuments} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredDocuments.map((doc, index) => (
+          {transformedDocuments.map((doc, index) => (
             <DocumentCard key={doc.id} document={doc} delay={index * 50} />
           ))}
         </div>
       )}
 
-      {filteredDocuments.length === 0 && (
+      {!isLoading && transformedDocuments.length === 0 && (
         <div className="text-center py-12 animate-fade-in">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
             <Search className="w-8 h-8 text-muted-foreground" />
