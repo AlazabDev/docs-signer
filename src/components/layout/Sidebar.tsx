@@ -11,7 +11,8 @@ import {
   ChevronRight,
   FileCheck,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -21,11 +22,13 @@ interface NavItem {
   label: string;
   href: string;
   badge?: number;
+  highlight?: boolean;
 }
 
 const mainNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'لوحة التحكم', href: '/' },
   { icon: FileText, label: 'المستندات', href: '/documents' },
+  { icon: Upload, label: 'رفع مستند', href: '/upload', highlight: true },
   { icon: Clock, label: 'قيد المراجعة', href: '/documents?status=in_review', badge: 3 },
   { icon: AlertCircle, label: 'يحتاج تعديل', href: '/documents?status=needs_fix', badge: 2 },
   { icon: FileCheck, label: 'جاهز للاعتماد', href: '/documents?status=ready_to_approve', badge: 5 },
@@ -95,7 +98,9 @@ export function Sidebar() {
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
                 isActive(item.href)
                   ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  : item.highlight
+                    ? "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               )}
             >
               <item.icon className={cn("w-5 h-5 flex-shrink-0", collapsed && "mx-auto")} />
