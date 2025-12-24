@@ -10,6 +10,8 @@ import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Sync from "./pages/Sync";
 import InvoiceView from "./pages/InvoiceView";
+import UploadDocument from "./pages/UploadDocument";
+import ReviewDocument from "./pages/ReviewDocument";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +27,8 @@ const App = () => (
           <Route path="/documents" element={<Documents />} />
           <Route path="/documents/:id" element={<DocumentDetail />} />
           <Route path="/invoices/view/:id" element={<InvoiceView />} />
+          <Route path="/upload" element={<UploadDocument />} />
+          <Route path="/review/:id" element={<ReviewDocument />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/users" element={<Users />} />
           <Route path="/sync" element={<Sync />} />
