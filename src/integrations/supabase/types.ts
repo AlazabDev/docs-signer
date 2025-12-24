@@ -692,6 +692,59 @@ export type Database = {
           },
         ]
       }
+      document_reviewers: {
+        Row: {
+          access_hash: string
+          created_at: string
+          department: string
+          document_id: string
+          id: string
+          rejection_reason: string | null
+          reviewer_email: string
+          reviewer_name: string
+          signature_data: string | null
+          signed_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          access_hash?: string
+          created_at?: string
+          department: string
+          document_id: string
+          id?: string
+          rejection_reason?: string | null
+          reviewer_email: string
+          reviewer_name: string
+          signature_data?: string | null
+          signed_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          access_hash?: string
+          created_at?: string
+          department?: string
+          document_id?: string
+          id?: string
+          rejection_reason?: string | null
+          reviewer_email?: string
+          reviewer_name?: string
+          signature_data?: string | null
+          signed_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_reviewers_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_signatures: {
         Row: {
           document_id: string
@@ -790,6 +843,7 @@ export type Database = {
           currency: string
           daftra_id: string | null
           date: string
+          description: string | null
           file_hash: string | null
           file_url: string | null
           html_url: string | null
@@ -797,9 +851,12 @@ export type Database = {
           number: string
           payment_status: string
           pdf_url: string | null
+          project_id: string | null
           raw_json: Json | null
+          sender_name: string | null
           status: string
           synced_at: string | null
+          title: string | null
           total: number
           type: string
           updated_at: string
@@ -816,6 +873,7 @@ export type Database = {
           currency?: string
           daftra_id?: string | null
           date?: string
+          description?: string | null
           file_hash?: string | null
           file_url?: string | null
           html_url?: string | null
@@ -823,9 +881,12 @@ export type Database = {
           number: string
           payment_status?: string
           pdf_url?: string | null
+          project_id?: string | null
           raw_json?: Json | null
+          sender_name?: string | null
           status?: string
           synced_at?: string | null
+          title?: string | null
           total?: number
           type: string
           updated_at?: string
@@ -842,6 +903,7 @@ export type Database = {
           currency?: string
           daftra_id?: string | null
           date?: string
+          description?: string | null
           file_hash?: string | null
           file_url?: string | null
           html_url?: string | null
@@ -849,9 +911,12 @@ export type Database = {
           number?: string
           payment_status?: string
           pdf_url?: string | null
+          project_id?: string | null
           raw_json?: Json | null
+          sender_name?: string | null
           status?: string
           synced_at?: string | null
+          title?: string | null
           total?: number
           type?: string
           updated_at?: string
