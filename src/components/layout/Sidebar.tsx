@@ -12,7 +12,8 @@ import {
   FileCheck,
   Clock,
   AlertCircle,
-  Upload
+  Upload,
+  Image
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ const mainNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'لوحة التحكم', href: '/' },
   { icon: FileText, label: 'المستندات', href: '/documents' },
   { icon: Upload, label: 'رفع مستند', href: '/upload', highlight: true },
+  { icon: Image, label: 'معرض الصور', href: '/gallery' },
   { icon: Clock, label: 'قيد المراجعة', href: '/documents?status=in_review', badge: 3 },
   { icon: AlertCircle, label: 'يحتاج تعديل', href: '/documents?status=needs_fix', badge: 2 },
   { icon: FileCheck, label: 'جاهز للاعتماد', href: '/documents?status=ready_to_approve', badge: 5 },
