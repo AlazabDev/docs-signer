@@ -1945,6 +1945,68 @@ export type Database = {
           },
         ]
       }
+      project_images: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number | null
+          document_id: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          folder_name: string
+          id: string
+          is_featured: boolean | null
+          mime_type: string | null
+          project_id: string | null
+          title: string | null
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          document_id?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          folder_name: string
+          id?: string
+          is_featured?: boolean | null
+          mime_type?: string | null
+          project_id?: string | null
+          title?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          document_id?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          folder_name?: string
+          id?: string
+          is_featured?: boolean | null
+          mime_type?: string | null
+          project_id?: string | null
+          title?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_images_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           actual_cost: number | null

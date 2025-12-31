@@ -12,6 +12,7 @@ import Sync from "./pages/Sync";
 import InvoiceView from "./pages/InvoiceView";
 import UploadDocument from "./pages/UploadDocument";
 import ReviewDocument from "./pages/ReviewDocument";
+import Gallery from "./pages/Gallery";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/invoices/view/:id" element={<InvoiceView />} />
           <Route path="/upload" element={<UploadDocument />} />
           <Route path="/review/:id" element={<ReviewDocument />} />
+          <Route path="/gallery" element={<Gallery />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/users" element={<Users />} />
           <Route path="/sync" element={<Sync />} />
