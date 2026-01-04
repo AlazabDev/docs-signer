@@ -21,7 +21,9 @@ import {
   List,
   Search,
   Loader2,
-  Plus
+  Plus,
+  ExternalLink,
+  Link2
 } from 'lucide-react';
 
 interface ProjectImage {
@@ -52,6 +54,13 @@ const PROJECT_FOLDERS = [
   { id: 'Tanta-Maintenance', name: 'طنطا - صيانة' },
 ];
 
+interface DocumentWithGallery {
+  id: string;
+  number: string;
+  client_name: string;
+  magicplan_gallery_url: string | null;
+}
+
 export default function Gallery() {
   const queryClient = useQueryClient();
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
@@ -62,6 +71,20 @@ export default function Gallery() {
   const [uploadFolder, setUploadFolder] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+
+  // Fetch documents with MagicPlan gallery URLs
+  const { data: documentsWithGallery = [] } = useQuery({
+    queryKey: ['documents-with-gallery'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, number, client_name, magicplan_gallery_url')
+        .not('magicplan_gallery_url', 'is', null);
+      
+      if (error) throw error;
+      return data as DocumentWithGallery[];
+    },
+  });
 
   // Fetch images from database
   const { data: images = [], isLoading } = useQuery({
@@ -298,7 +321,50 @@ export default function Gallery() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="flex items-center gap-4 p-4">
+              <div className="rounded-lg bg-amber-500/10 p-3">
+                <Link2 className="h-6 w-6 text-amber-500" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">معارض MagicPlan</p>
+                <p className="text-2xl font-bold">{documentsWithGallery.length}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* MagicPlan Galleries */}
+        {documentsWithGallery.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <ExternalLink className="h-5 w-5" />
+              معارض MagicPlan المرتبطة
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {documentsWithGallery.map((doc) => (
+                <Card key={doc.id} className="group hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{doc.number}</p>
+                        <p className="text-sm text-muted-foreground">{doc.client_name}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(doc.magicplan_gallery_url!, '_blank')}
+                      >
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                        فتح المعرض
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Gallery */}
         {isLoading ? (
