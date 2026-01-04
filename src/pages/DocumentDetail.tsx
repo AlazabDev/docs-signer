@@ -141,10 +141,19 @@ export default function DocumentDetail() {
                 <span className="font-medium">معاينة المستند</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Download className="w-4 h-4" />
-                  تحميل
-                </Button>
+                {(document.file_url || document.pdf_url) && (
+                  <Button variant="outline" size="sm" className="gap-2" asChild>
+                    <a 
+                      href={document.file_url || document.pdf_url || ''} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      download
+                    >
+                      <Download className="w-4 h-4" />
+                      تحميل
+                    </a>
+                  </Button>
+                )}
                 {document.html_url && (
                   <Button variant="outline" size="sm" className="gap-2" asChild>
                     <a href={document.html_url} target="_blank" rel="noopener noreferrer">
