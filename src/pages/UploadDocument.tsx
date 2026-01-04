@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,13 +9,21 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Upload, Plus, Trash2, Send, ArrowRight, FileText, Loader2 } from 'lucide-react';
+import { Upload, Plus, Trash2, Send, ArrowRight, FileText, Loader2, X } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 
 interface Reviewer {
   id: string;
   name: string;
   email: string;
   department: 'engineering' | 'procurement' | 'accounting';
+}
+
+interface UploadedFile {
+  file: File;
+  progress: number;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
 }
 
 const departmentLabels: Record<string, string> = {
@@ -28,26 +36,50 @@ export default function UploadDocument() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [senderName, setSenderName] = useState('');
   const [projectId, setProjectId] = useState('');
+  const [dragActive, setDragActive] = useState(false);
   const [reviewers, setReviewers] = useState<Reviewer[]>([
     { id: '1', name: '', email: '', department: 'engineering' },
     { id: '2', name: '', email: '', department: 'procurement' },
     { id: '3', name: '', email: '', department: 'accounting' },
   ]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      if (selectedFile.type !== 'application/pdf') {
-        toast({ title: 'خطأ', description: 'يرجى اختيار ملف PDF فقط', variant: 'destructive' });
-        return;
+  const handleFiles = useCallback((selectedFiles: FileList | File[]) => {
+    const validFiles: UploadedFile[] = [];
+    Array.from(selectedFiles).forEach((file) => {
+      if (file.type === 'application/pdf') {
+        validFiles.push({ file, progress: 0, status: 'pending' });
       }
-      setFile(selectedFile);
+    });
+    
+    if (validFiles.length === 0) {
+      toast({ title: 'خطأ', description: 'يرجى اختيار ملفات PDF فقط', variant: 'destructive' });
+      return;
     }
+    
+    setFiles((prev) => [...prev, ...validFiles]);
+  }, [toast]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      handleFiles(e.target.files);
+    }
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    if (e.dataTransfer.files) {
+      handleFiles(e.dataTransfer.files);
+    }
+  }, [handleFiles]);
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addReviewer = () => {
@@ -70,8 +102,8 @@ export default function UploadDocument() {
   };
 
   const handleSubmit = async () => {
-    if (!file) {
-      toast({ title: 'خطأ', description: 'يرجى اختيار ملف PDF', variant: 'destructive' });
+    if (files.length === 0) {
+      toast({ title: 'خطأ', description: 'يرجى اختيار ملف PDF واحد على الأقل', variant: 'destructive' });
       return;
     }
 
@@ -87,67 +119,114 @@ export default function UploadDocument() {
     }
 
     setUploading(true);
+    let successCount = 0;
+    let lastDocumentId = '';
 
     try {
-      // 1. Upload file to storage
-      const fileName = `${Date.now()}-${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file);
+      for (let i = 0; i < files.length; i++) {
+        const uploadFile = files[i];
+        
+        // Update status to uploading
+        setFiles((prev) => prev.map((f, idx) => 
+          idx === i ? { ...f, status: 'uploading' as const, progress: 10 } : f
+        ));
 
-      if (uploadError) throw uploadError;
+        try {
+          // 1. Upload file to storage
+          const fileName = `${Date.now()}-${uploadFile.file.name}`;
+          const { error: uploadError } = await supabase.storage
+            .from('documents')
+            .upload(fileName, uploadFile.file);
 
-      // 2. Get public URL
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(fileName);
+          if (uploadError) throw uploadError;
 
-      // 3. Create document record
-      const { data: documentData, error: docError } = await supabase
-        .from('documents')
-        .insert({
-          number: `DOC-${Date.now()}`,
-          type: 'document',
-          client_name: senderName || 'غير محدد',
-          title,
-          description,
-          sender_name: senderName,
-          project_id: projectId,
-          file_url: urlData.publicUrl,
-          status: 'in_review',
-          total: 0,
-          currency: 'SAR',
-        })
-        .select()
-        .single();
+          setFiles((prev) => prev.map((f, idx) => 
+            idx === i ? { ...f, progress: 50 } : f
+          ));
 
-      if (docError) throw docError;
+          // 2. Get public URL
+          const { data: urlData } = supabase.storage
+            .from('documents')
+            .getPublicUrl(fileName);
 
-      // 4. Create reviewer records
-      const reviewerRecords = validReviewers.map((r) => ({
-        document_id: documentData.id,
-        reviewer_name: r.name,
-        reviewer_email: r.email,
-        department: r.department,
-      }));
+          // 3. Create document record
+          const docTitle = files.length > 1 ? `${title} (${i + 1}/${files.length})` : title;
+          const { data: documentData, error: docError } = await supabase
+            .from('documents')
+            .insert({
+              number: `DOC-${Date.now()}-${i}`,
+              type: 'document',
+              client_name: senderName || 'غير محدد',
+              title: docTitle,
+              description,
+              sender_name: senderName,
+              project_id: projectId || null,
+              file_url: urlData.publicUrl,
+              status: 'in_review',
+              total: 0,
+              currency: 'SAR',
+            })
+            .select()
+            .single();
 
-      const { error: reviewerError } = await supabase
-        .from('document_reviewers')
-        .insert(reviewerRecords);
+          if (docError) throw docError;
 
-      if (reviewerError) throw reviewerError;
+          setFiles((prev) => prev.map((f, idx) => 
+            idx === i ? { ...f, progress: 80 } : f
+          ));
 
-      toast({
-        title: 'تم الرفع بنجاح',
-        description: 'تم رفع المستند وإرساله للمراجعين',
-      });
+          lastDocumentId = documentData.id;
 
-      navigate(`/documents/${documentData.id}`);
+          // 4. Create reviewer records
+          const reviewerRecords = validReviewers.map((r) => ({
+            document_id: documentData.id,
+            reviewer_name: r.name,
+            reviewer_email: r.email,
+            department: r.department,
+          }));
+
+          const { error: reviewerError } = await supabase
+            .from('document_reviewers')
+            .insert(reviewerRecords);
+
+          if (reviewerError) throw reviewerError;
+
+          setFiles((prev) => prev.map((f, idx) => 
+            idx === i ? { ...f, status: 'success' as const, progress: 100 } : f
+          ));
+          
+          successCount++;
+        } catch (fileError) {
+          console.error(`Error uploading file ${i}:`, fileError);
+          setFiles((prev) => prev.map((f, idx) => 
+            idx === i ? { ...f, status: 'error' as const, error: 'فشل الرفع' } : f
+          ));
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: 'تم الرفع بنجاح',
+          description: `تم رفع ${successCount} من ${files.length} ملفات وإرسالها للمراجعين`,
+        });
+
+        if (files.length === 1 && lastDocumentId) {
+          navigate(`/documents/${lastDocumentId}`);
+        } else {
+          navigate('/documents');
+        }
+      } else {
+        toast({
+          title: 'خطأ',
+          description: 'فشل رفع جميع الملفات',
+          variant: 'destructive',
+        });
+      }
     } catch (error) {
       console.error('Upload error:', error);
       toast({
         title: 'خطأ',
-        description: 'حدث خطأ أثناء رفع المستند',
+        description: 'حدث خطأ أثناء رفع المستندات',
         variant: 'destructive',
       });
     } finally {
@@ -177,32 +256,64 @@ export default function UploadDocument() {
           <CardContent className="space-y-6">
             {/* File Upload */}
             <div className="space-y-2">
-              <Label>ملف PDF</Label>
+              <Label>ملفات PDF (يمكن رفع عدة ملفات)</Label>
               <div
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={handleDrop}
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer hover:border-primary/50 ${
-                  file ? 'border-primary bg-primary/5' : 'border-border'
+                  dragActive ? 'border-primary bg-primary/5' : files.length > 0 ? 'border-primary/50' : 'border-border'
                 }`}
                 onClick={() => document.getElementById('file-input')?.click()}
               >
-                {file ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <FileText className="w-8 h-8 text-primary" />
-                    <span className="font-medium">{file.name}</span>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-                    <p className="text-muted-foreground">اضغط لاختيار ملف PDF</p>
-                  </>
-                )}
+                <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+                <p className="text-muted-foreground">اسحب الملفات هنا أو اضغط للاختيار</p>
+                <p className="text-xs text-muted-foreground mt-2">PDF فقط - يمكن رفع عدة ملفات</p>
                 <input
                   id="file-input"
                   type="file"
                   accept=".pdf"
+                  multiple
                   className="hidden"
                   onChange={handleFileChange}
                 />
               </div>
+              
+              {/* Files List */}
+              {files.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  {files.map((f, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+                      <FileText className={`w-5 h-5 ${
+                        f.status === 'success' ? 'text-green-500' : 
+                        f.status === 'error' ? 'text-destructive' : 
+                        'text-primary'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{f.file.name}</p>
+                        {f.status === 'uploading' && (
+                          <Progress value={f.progress} className="h-1 mt-1" />
+                        )}
+                        {f.status === 'error' && (
+                          <p className="text-xs text-destructive">{f.error}</p>
+                        )}
+                      </div>
+                      {f.status === 'pending' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); removeFile(index); }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {f.status === 'success' && (
+                        <span className="text-xs text-green-500">✓</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Project Selection */}
