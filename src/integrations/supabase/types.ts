@@ -896,6 +896,7 @@ export type Database = {
           file_url: string | null
           html_url: string | null
           id: string
+          magicplan_gallery_url: string | null
           number: string
           payment_status: string
           pdf_url: string | null
@@ -926,6 +927,7 @@ export type Database = {
           file_url?: string | null
           html_url?: string | null
           id?: string
+          magicplan_gallery_url?: string | null
           number: string
           payment_status?: string
           pdf_url?: string | null
@@ -956,6 +958,7 @@ export type Database = {
           file_url?: string | null
           html_url?: string | null
           id?: string
+          magicplan_gallery_url?: string | null
           number?: string
           payment_status?: string
           pdf_url?: string | null
