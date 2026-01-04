@@ -155,7 +155,7 @@ export default function UploadDocument() {
             .from('documents')
             .insert({
               number: `DOC-${Date.now()}-${i}`,
-              type: 'document',
+              type: 'estimate',
               client_name: senderName || 'غير محدد',
               title: docTitle,
               description,
