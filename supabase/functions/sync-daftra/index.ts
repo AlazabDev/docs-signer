@@ -5,19 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface DaftraDocument {
-  id: string;
-  number: string;
-  client_name: string;
-  client_email?: string;
-  total: number;
-  currency?: string;
-  date: string;
-  status?: string;
-  payment_status?: string;
-  pdf_url?: string;
-  html_url?: string;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DaftraDocument = Record<string, any>;
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -103,7 +92,32 @@ Deno.serve(async (req) => {
     }
 
     const daftraData = await daftraResponse.json();
-    const documents: DaftraDocument[] = daftraData.data || daftraData || [];
+    console.log("Raw Daftra response:", JSON.stringify(daftraData).substring(0, 500));
+    
+    // Handle Daftra API response structure
+    let documents: DaftraDocument[] = [];
+    
+    // Daftra returns data in format: { "Invoice": {...}, pagination: {...} } or { "Invoices": [{...}] }
+    // or array directly
+    if (Array.isArray(daftraData)) {
+      documents = daftraData;
+    } else if (daftraData.data) {
+      documents = Array.isArray(daftraData.data) ? daftraData.data : [daftraData.data];
+    } else {
+      // Try to extract from nested structure like { Invoice: {...} } or { Invoices: [...] }
+      const keys = Object.keys(daftraData);
+      for (const key of keys) {
+        if (key.toLowerCase().includes('invoice') || key.toLowerCase().includes('quote') || key.toLowerCase().includes('estimate')) {
+          const value = daftraData[key];
+          if (Array.isArray(value)) {
+            documents = value;
+          } else if (typeof value === 'object' && value !== null) {
+            documents = [value];
+          }
+          break;
+        }
+      }
+    }
     
     console.log(`Received ${documents.length} documents from Daftra`);
 
@@ -119,23 +133,54 @@ Deno.serve(async (req) => {
     let synced = 0;
     let errors = 0;
 
-    for (const doc of documents) {
+    for (const rawDoc of documents) {
       try {
+        // Extract invoice/quote data from nested structure
+        const doc = rawDoc.Invoice || rawDoc.Quote || rawDoc.Estimate || rawDoc;
+        const client = doc.Client || {};
+        
+        // Build proper document number
+        const docNumber = doc.no || doc.number || `${mappedType.toUpperCase()}-${doc.id}`;
+        
+        // Build client name
+        let clientName = "غير محدد";
+        if (client.business_name) {
+          clientName = client.business_name;
+        } else if (client.first_name || client.last_name) {
+          clientName = `${client.first_name || ''} ${client.last_name || ''}`.trim();
+        } else if (doc.client_business_name) {
+          clientName = doc.client_business_name;
+        } else if (doc.client_first_name || doc.client_last_name) {
+          clientName = `${doc.client_first_name || ''} ${doc.client_last_name || ''}`.trim();
+        }
+        
+        // Extract total amount
+        const total = doc.summary_total || doc.total || 0;
+        
+        // Extract client email
+        const clientEmail = client.email || doc.client_email || null;
+        
+        // Extract URLs
+        const pdfUrl = doc.invoice_pdf_url || doc.quote_pdf_url || doc.pdf_url || null;
+        const htmlUrl = doc.invoice_html_url || doc.quote_html_url || doc.html_url || null;
+        
+        console.log(`Processing document: ${docNumber}, client: ${clientName}, total: ${total}`);
+        
         const { error } = await supabase
           .from("documents")
           .upsert({
             daftra_id: doc.id?.toString(),
             type: mappedType,
-            number: doc.number || `${mappedType.toUpperCase()}-${doc.id}`,
-            client_name: doc.client_name || "غير محدد",
-            client_email: doc.client_email,
-            total: doc.total || 0,
-            currency: doc.currency || "EGP",
-            date: doc.date || new Date().toISOString().split("T")[0],
-            payment_status: mapPaymentStatus(doc.payment_status),
-            pdf_url: doc.pdf_url,
-            html_url: doc.html_url,
-            raw_json: doc,
+            number: docNumber,
+            client_name: clientName,
+            client_email: clientEmail,
+            total: parseFloat(total) || 0,
+            currency: doc.currency_code || "EGP",
+            date: doc.date || doc.issue_date || new Date().toISOString().split("T")[0],
+            payment_status: mapPaymentStatus(doc.payment_status?.toString()),
+            pdf_url: pdfUrl,
+            html_url: htmlUrl,
+            raw_json: rawDoc,
             synced_at: new Date().toISOString(),
           }, {
             onConflict: "daftra_id",
@@ -148,7 +193,7 @@ Deno.serve(async (req) => {
           synced++;
         }
       } catch (err) {
-        console.error(`Exception processing document ${doc.id}:`, err);
+        console.error(`Exception processing document:`, err);
         errors++;
       }
     }
