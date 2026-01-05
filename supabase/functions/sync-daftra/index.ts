@@ -92,34 +92,30 @@ Deno.serve(async (req) => {
     }
 
     const daftraData = await daftraResponse.json();
-    console.log("Raw Daftra response:", JSON.stringify(daftraData).substring(0, 500));
+    console.log("Daftra response keys:", Object.keys(daftraData));
     
-    // Handle Daftra API response structure
+    // Handle Daftra API response - it returns array of objects like [{Invoice: {...}}, ...]
     let documents: DaftraDocument[] = [];
     
-    // Daftra returns data in format: { "Invoice": {...}, pagination: {...} } or { "Invoices": [{...}] }
-    // or array directly
     if (Array.isArray(daftraData)) {
+      // Response is array of {Invoice: {...}} objects
       documents = daftraData;
-    } else if (daftraData.data) {
-      documents = Array.isArray(daftraData.data) ? daftraData.data : [daftraData.data];
+    } else if (daftraData.data && Array.isArray(daftraData.data)) {
+      documents = daftraData.data;
     } else {
-      // Try to extract from nested structure like { Invoice: {...} } or { Invoices: [...] }
-      const keys = Object.keys(daftraData);
-      for (const key of keys) {
-        if (key.toLowerCase().includes('invoice') || key.toLowerCase().includes('quote') || key.toLowerCase().includes('estimate')) {
-          const value = daftraData[key];
-          if (Array.isArray(value)) {
-            documents = value;
-          } else if (typeof value === 'object' && value !== null) {
-            documents = [value];
-          }
-          break;
-        }
+      // Single object or nested structure
+      const keys = Object.keys(daftraData).filter(k => 
+        k.toLowerCase().includes('invoice') || 
+        k.toLowerCase().includes('quote') || 
+        k.toLowerCase().includes('estimate')
+      );
+      if (keys.length > 0) {
+        const value = daftraData[keys[0]];
+        documents = Array.isArray(value) ? value : [{ [keys[0]]: value }];
       }
     }
     
-    console.log(`Received ${documents.length} documents from Daftra`);
+    console.log(`Found ${documents.length} documents to sync`);
 
     // Map document type
     const typeMap: Record<string, string> = {
@@ -135,49 +131,66 @@ Deno.serve(async (req) => {
 
     for (const rawDoc of documents) {
       try {
-        // Extract invoice/quote data from nested structure
+        // Daftra wraps each item: {Invoice: {id: 314, no: "AZ-INV-...", Client: {...}, ...}}
         const doc = rawDoc.Invoice || rawDoc.Quote || rawDoc.Estimate || rawDoc;
         const client = doc.Client || {};
         
-        // Build proper document number
-        const docNumber = doc.no || doc.number || `${mappedType.toUpperCase()}-${doc.id}`;
-        
-        // Build client name
-        let clientName = "غير محدد";
-        if (client.business_name) {
-          clientName = client.business_name;
-        } else if (client.first_name || client.last_name) {
-          clientName = `${client.first_name || ''} ${client.last_name || ''}`.trim();
-        } else if (doc.client_business_name) {
-          clientName = doc.client_business_name;
-        } else if (doc.client_first_name || doc.client_last_name) {
-          clientName = `${doc.client_first_name || ''} ${doc.client_last_name || ''}`.trim();
+        // Validate we have an ID
+        if (!doc.id) {
+          console.log("Skipping document without id:", JSON.stringify(rawDoc).substring(0, 200));
+          continue;
         }
         
-        // Extract total amount
-        const total = doc.summary_total || doc.total || 0;
+        const daftraId = doc.id.toString();
+        
+        // Build document number
+        const docNumber = doc.no || doc.number || `${mappedType.toUpperCase()}-${daftraId}`;
+        
+        // Build client name - try multiple fields
+        let clientName = "غير محدد";
+        if (doc.client_business_name && doc.client_business_name.trim()) {
+          clientName = doc.client_business_name;
+        } else if (client.business_name && client.business_name.trim()) {
+          clientName = client.business_name;
+        } else if (doc.client_first_name || doc.client_last_name) {
+          clientName = `${doc.client_first_name || ''} ${doc.client_last_name || ''}`.trim() || "غير محدد";
+        } else if (client.first_name || client.last_name) {
+          clientName = `${client.first_name || ''} ${client.last_name || ''}`.trim() || "غير محدد";
+        }
+        
+        // Extract total - try summary_total first, then total
+        const total = parseFloat(doc.summary_total) || parseFloat(doc.total) || 0;
         
         // Extract client email
-        const clientEmail = client.email || doc.client_email || null;
+        const clientEmail = doc.client_email || client.email || null;
         
         // Extract URLs
         const pdfUrl = doc.invoice_pdf_url || doc.quote_pdf_url || doc.pdf_url || null;
         const htmlUrl = doc.invoice_html_url || doc.quote_html_url || doc.html_url || null;
         
-        console.log(`Processing document: ${docNumber}, client: ${clientName}, total: ${total}`);
+        // Map payment status (Daftra uses: 0=unpaid, 1=partial, 2=paid)
+        let paymentStatus: "paid" | "partial" | "unpaid" = "unpaid";
+        const paymentStatusNum = parseInt(doc.payment_status);
+        if (paymentStatusNum === 2 || doc.payment_status === "paid") {
+          paymentStatus = "paid";
+        } else if (paymentStatusNum === 1 || doc.payment_status === "partial") {
+          paymentStatus = "partial";
+        }
+        
+        console.log(`Syncing: ${docNumber} | Client: ${clientName} | Total: ${total} | ID: ${daftraId}`);
         
         const { error } = await supabase
           .from("documents")
           .upsert({
-            daftra_id: doc.id?.toString(),
+            daftra_id: daftraId,
             type: mappedType,
             number: docNumber,
             client_name: clientName,
             client_email: clientEmail,
-            total: parseFloat(total) || 0,
+            total: total,
             currency: doc.currency_code || "EGP",
             date: doc.date || doc.issue_date || new Date().toISOString().split("T")[0],
-            payment_status: mapPaymentStatus(doc.payment_status?.toString()),
+            payment_status: paymentStatus,
             pdf_url: pdfUrl,
             html_url: htmlUrl,
             raw_json: rawDoc,
@@ -187,13 +200,13 @@ Deno.serve(async (req) => {
           });
 
         if (error) {
-          console.error(`Error upserting document ${doc.id}:`, error);
+          console.error(`Error upserting ${daftraId}:`, error.message);
           errors++;
         } else {
           synced++;
         }
       } catch (err) {
-        console.error(`Exception processing document:`, err);
+        console.error(`Exception:`, err);
         errors++;
       }
     }
