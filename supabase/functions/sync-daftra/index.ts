@@ -46,6 +46,17 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Clean up subdomain - extract just the subdomain if a full URL was provided
+    let cleanSubdomain = daftraSubdomain.trim();
+    // Remove protocol if present
+    cleanSubdomain = cleanSubdomain.replace(/^https?:\/\//i, '');
+    // Remove .daftra.com and anything after if present
+    cleanSubdomain = cleanSubdomain.replace(/\.daftra\.com.*$/i, '');
+    // Remove any trailing slashes
+    cleanSubdomain = cleanSubdomain.replace(/\/+$/, '');
+    
+    console.log(`Cleaned subdomain: ${cleanSubdomain} (original: ${daftraSubdomain})`);
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Parse request body for options
@@ -65,7 +76,7 @@ Deno.serve(async (req) => {
     console.log(`Syncing ${documentType} from Daftra (page ${page}, limit ${limit})`);
 
     // Fetch from Daftra API
-    const daftraUrl = `https://${daftraSubdomain}.daftra.com/api2/${documentType}?page=${page}&limit=${limit}`;
+    const daftraUrl = `https://${cleanSubdomain}.daftra.com/api2/${documentType}?page=${page}&limit=${limit}`;
     
     const daftraResponse = await fetch(daftraUrl, {
       method: "GET",
