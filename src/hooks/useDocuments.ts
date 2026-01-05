@@ -22,6 +22,7 @@ export interface Document {
   updated_at: string;
   ai_summary: string | null;
   ai_extracted_data: Record<string, unknown> | null;
+  raw_json: Record<string, unknown> | null;
 }
 
 export interface DocumentStats {

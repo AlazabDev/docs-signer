@@ -13,7 +13,8 @@ import {
   Clock,
   AlertCircle,
   Upload,
-  Image
+  Image,
+  Receipt
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'لوحة التحكم', href: '/' },
   { icon: FileText, label: 'المستندات', href: '/documents' },
+  { icon: Receipt, label: 'فواتير دفترة', href: '/daftra-invoices' },
   { icon: Upload, label: 'رفع مستند', href: '/upload', highlight: true },
   { icon: Image, label: 'معرض الصور', href: '/gallery' },
   { icon: Clock, label: 'قيد المراجعة', href: '/documents?status=in_review', badge: 3 },
