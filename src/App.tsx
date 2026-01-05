@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Documents from "./pages/Documents";
 import DocumentDetail from "./pages/DocumentDetail";
 import DaftraInvoices from "./pages/DaftraInvoices";
+import SystemReport from "./pages/SystemReport";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import Sync from "./pages/Sync";
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/documents" element={<Documents />} />
           <Route path="/documents/:id" element={<DocumentDetail />} />
           <Route path="/daftra-invoices" element={<DaftraInvoices />} />
+          <Route path="/system-report" element={<SystemReport />} />
           <Route path="/invoices/view/:id" element={<InvoiceView />} />
           <Route path="/upload" element={<UploadDocument />} />
           <Route path="/review/:id" element={<ReviewDocument />} />

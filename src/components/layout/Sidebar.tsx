@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Upload,
   Image,
-  Receipt
+  Receipt,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ const mainNavItems: NavItem[] = [
 ];
 
 const settingsNavItems: NavItem[] = [
+  { icon: ClipboardList, label: 'تقرير النظام', href: '/system-report' },
   { icon: Users, label: 'المستخدمين', href: '/users' },
   { icon: RefreshCw, label: 'المزامنة', href: '/sync' },
   { icon: Settings, label: 'الإعدادات', href: '/settings' },
