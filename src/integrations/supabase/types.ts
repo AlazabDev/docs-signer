@@ -2241,6 +2241,68 @@ export type Database = {
         }
         Relationships: []
       }
+      quote_items: {
+        Row: {
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          daftra_item_id: string | null
+          document_id: string
+          id: string
+          notes: string | null
+          product_description: string | null
+          product_name: string
+          quantity: number | null
+          rejection_reason: string | null
+          total_price: number | null
+          unit_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          daftra_item_id?: string | null
+          document_id: string
+          id?: string
+          notes?: string | null
+          product_description?: string | null
+          product_name: string
+          quantity?: number | null
+          rejection_reason?: string | null
+          total_price?: number | null
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          daftra_item_id?: string | null
+          document_id?: string
+          id?: string
+          notes?: string | null
+          product_description?: string | null
+          product_name?: string
+          quantity?: number | null
+          rejection_reason?: string | null
+          total_price?: number | null
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       request_approvals: {
         Row: {
           approval_type: string
