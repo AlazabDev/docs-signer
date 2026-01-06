@@ -15,6 +15,8 @@ import InvoiceView from "./pages/InvoiceView";
 import UploadDocument from "./pages/UploadDocument";
 import ReviewDocument from "./pages/ReviewDocument";
 import Gallery from "./pages/Gallery";
+import Quotes from "./pages/Quotes";
+import QuoteReview from "./pages/QuoteReview";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +40,8 @@ const App = () => (
           <Route path="/settings" element={<Settings />} />
           <Route path="/users" element={<Users />} />
           <Route path="/sync" element={<Sync />} />
+          <Route path="/quotes" element={<Quotes />} />
+          <Route path="/quote-review/:id" element={<QuoteReview />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

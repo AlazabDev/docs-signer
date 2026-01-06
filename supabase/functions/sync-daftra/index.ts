@@ -35,27 +35,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Clean up subdomain - extract just the subdomain if a full URL was provided
+    // Clean up subdomain
     let cleanSubdomain = daftraSubdomain.trim();
-    // Remove protocol if present
     cleanSubdomain = cleanSubdomain.replace(/^https?:\/\//i, '');
-    // Remove .daftra.com and anything after if present
     cleanSubdomain = cleanSubdomain.replace(/\.daftra\.com.*$/i, '');
-    // Remove any trailing slashes
     cleanSubdomain = cleanSubdomain.replace(/\/+$/, '');
     
-    console.log(`Cleaned subdomain: ${cleanSubdomain} (original: ${daftraSubdomain})`);
+    console.log(`Cleaned subdomain: ${cleanSubdomain}`);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Parse request body for options
-    let documentType = "invoices";
+    let documentType = "quotes"; // افتراضياً نسحب عروض الأسعار
     let page = 1;
     let limit = 50;
     
     try {
       const body = await req.json();
-      documentType = body.type || "invoices";
+      documentType = body.type || "quotes";
       page = body.page || 1;
       limit = body.limit || 50;
     } catch {
@@ -94,16 +91,14 @@ Deno.serve(async (req) => {
     const daftraData = await daftraResponse.json();
     console.log("Daftra response keys:", Object.keys(daftraData));
     
-    // Handle Daftra API response - it returns array of objects like [{Invoice: {...}}, ...]
+    // Handle Daftra API response
     let documents: DaftraDocument[] = [];
     
     if (Array.isArray(daftraData)) {
-      // Response is array of {Invoice: {...}} objects
       documents = daftraData;
     } else if (daftraData.data && Array.isArray(daftraData.data)) {
       documents = daftraData.data;
     } else {
-      // Single object or nested structure
       const keys = Object.keys(daftraData).filter(k => 
         k.toLowerCase().includes('invoice') || 
         k.toLowerCase().includes('quote') || 
@@ -123,17 +118,19 @@ Deno.serve(async (req) => {
       quotes: "quote",
       estimates: "estimate",
     };
-    const mappedType = typeMap[documentType] || "invoice";
+    const mappedType = typeMap[documentType] || "quote";
 
     // Upsert documents into Supabase
     let synced = 0;
+    let itemsSynced = 0;
     let errors = 0;
 
     for (const rawDoc of documents) {
       try {
-        // Daftra wraps each item: {Invoice: {id: 314, no: "AZ-INV-...", Client: {...}, ...}}
-        const doc = rawDoc.Invoice || rawDoc.Quote || rawDoc.Estimate || rawDoc;
+        // Daftra wraps each item: {Quote: {id: 314, no: "...", Client: {...}, QuoteItem: [...], ...}}
+        const doc = rawDoc.Quote || rawDoc.Invoice || rawDoc.Estimate || rawDoc;
         const client = doc.Client || {};
+        const items = doc.QuoteItem || doc.InvoiceItem || doc.EstimateItem || [];
         
         // Validate we have an ID
         if (!doc.id) {
@@ -146,7 +143,7 @@ Deno.serve(async (req) => {
         // Build document number
         const docNumber = doc.no || doc.number || `${mappedType.toUpperCase()}-${daftraId}`;
         
-        // Build client name - try multiple fields
+        // Build client name
         let clientName = "غير محدد";
         if (doc.client_business_name && doc.client_business_name.trim()) {
           clientName = doc.client_business_name;
@@ -158,17 +155,17 @@ Deno.serve(async (req) => {
           clientName = `${client.first_name || ''} ${client.last_name || ''}`.trim() || "غير محدد";
         }
         
-        // Extract total - try summary_total first, then total
+        // Extract total
         const total = parseFloat(doc.summary_total) || parseFloat(doc.total) || 0;
         
         // Extract client email
         const clientEmail = doc.client_email || client.email || null;
         
         // Extract URLs
-        const pdfUrl = doc.invoice_pdf_url || doc.quote_pdf_url || doc.pdf_url || null;
-        const htmlUrl = doc.invoice_html_url || doc.quote_html_url || doc.html_url || null;
+        const pdfUrl = doc.quote_pdf_url || doc.invoice_pdf_url || doc.pdf_url || null;
+        const htmlUrl = doc.quote_html_url || doc.invoice_html_url || doc.html_url || null;
         
-        // Map payment status (Daftra uses: 0=unpaid, 1=partial, 2=paid)
+        // Map payment status
         let paymentStatus: "paid" | "partial" | "unpaid" = "unpaid";
         const paymentStatusNum = parseInt(doc.payment_status);
         if (paymentStatusNum === 2 || doc.payment_status === "paid") {
@@ -177,9 +174,10 @@ Deno.serve(async (req) => {
           paymentStatus = "partial";
         }
         
-        console.log(`Syncing: ${docNumber} | Client: ${clientName} | Total: ${total} | ID: ${daftraId}`);
+        console.log(`Syncing: ${docNumber} | Client: ${clientName} | Total: ${total} | Items: ${items.length}`);
         
-        const { error } = await supabase
+        // Upsert document
+        const { data: docData, error: docError } = await supabase
           .from("documents")
           .upsert({
             daftra_id: daftraId,
@@ -197,13 +195,64 @@ Deno.serve(async (req) => {
             synced_at: new Date().toISOString(),
           }, {
             onConflict: "daftra_id",
-          });
+          })
+          .select('id')
+          .single();
 
-        if (error) {
-          console.error(`Error upserting ${daftraId}:`, error.message);
+        if (docError) {
+          console.error(`Error upserting document ${daftraId}:`, docError.message);
           errors++;
-        } else {
-          synced++;
+          continue;
+        }
+        
+        synced++;
+        
+        // Sync quote items if present
+        if (Array.isArray(items) && items.length > 0 && docData?.id) {
+          for (const item of items) {
+            const itemId = item.id?.toString() || null;
+            
+            // Check if item exists
+            const { data: existingItem } = await supabase
+              .from("quote_items")
+              .select("id")
+              .eq("document_id", docData.id)
+              .eq("daftra_item_id", itemId)
+              .maybeSingle();
+            
+            const itemData = {
+              document_id: docData.id,
+              daftra_item_id: itemId,
+              product_name: item.product || item.name || item.description || "منتج/خدمة",
+              product_description: item.description || item.notes || null,
+              quantity: parseFloat(item.quantity) || 1,
+              unit_price: parseFloat(item.unit_price) || parseFloat(item.price) || 0,
+              total_price: parseFloat(item.total) || (parseFloat(item.quantity) * parseFloat(item.unit_price)) || 0,
+              notes: item.notes || null,
+            };
+            
+            if (existingItem) {
+              // Update existing item (keep approval status)
+              await supabase
+                .from("quote_items")
+                .update({
+                  product_name: itemData.product_name,
+                  product_description: itemData.product_description,
+                  quantity: itemData.quantity,
+                  unit_price: itemData.unit_price,
+                  total_price: itemData.total_price,
+                  notes: itemData.notes,
+                })
+                .eq("id", existingItem.id);
+            } else {
+              // Insert new item
+              await supabase
+                .from("quote_items")
+                .insert(itemData);
+            }
+            
+            itemsSynced++;
+          }
         }
       } catch (err) {
         console.error(`Exception:`, err);
@@ -211,12 +260,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Sync complete: ${synced} synced, ${errors} errors`);
+    console.log(`Sync complete: ${synced} docs, ${itemsSynced} items, ${errors} errors`);
 
     return new Response(
       JSON.stringify({
         success: true,
         synced,
+        itemsSynced,
         errors,
         total: documents.length,
         type: documentType,
@@ -242,11 +292,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-function mapPaymentStatus(status?: string): "paid" | "partial" | "unpaid" {
-  if (!status) return "unpaid";
-  const s = status.toLowerCase();
-  if (s.includes("paid") || s.includes("مدفوع")) return "paid";
-  if (s.includes("partial") || s.includes("جزئي")) return "partial";
-  return "unpaid";
-}

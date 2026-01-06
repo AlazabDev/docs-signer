@@ -31,13 +31,12 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'لوحة التحكم', href: '/' },
   { icon: FileText, label: 'المستندات', href: '/documents' },
+  { icon: Receipt, label: 'عروض الأسعار', href: '/quotes', highlight: true },
   { icon: Receipt, label: 'فواتير دفترة', href: '/daftra-invoices' },
-  { icon: Upload, label: 'رفع مستند', href: '/upload', highlight: true },
+  { icon: Upload, label: 'رفع مستند', href: '/upload' },
   { icon: Image, label: 'معرض الصور', href: '/gallery' },
   { icon: Clock, label: 'قيد المراجعة', href: '/documents?status=in_review', badge: 3 },
-  { icon: AlertCircle, label: 'يحتاج تعديل', href: '/documents?status=needs_fix', badge: 2 },
-  { icon: FileCheck, label: 'جاهز للاعتماد', href: '/documents?status=ready_to_approve', badge: 5 },
-  { icon: CheckCircle, label: 'المعتمدة', href: '/documents?status=approved' },
+  { icon: FileCheck, label: 'المعتمدة', href: '/documents?status=approved' },
 ];
 
 const settingsNavItems: NavItem[] = [
