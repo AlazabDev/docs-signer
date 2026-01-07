@@ -46,13 +46,20 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Parse request body for options
-    let documentType = "quotes"; // افتراضياً نسحب عروض الأسعار
+    let documentType = "estimates"; // افتراضياً نسحب عروض الأسعار (estimates في دفترة)
     let page = 1;
     let limit = 50;
     
     try {
       const body = await req.json();
-      documentType = body.type || "quotes";
+      // Map user-friendly names to Daftra API endpoints
+      const typeMapping: Record<string, string> = {
+        quotes: "estimates",      // عروض الأسعار = estimates
+        estimates: "estimates",   
+        invoices: "invoices",     // الفواتير
+      };
+      const requestedType = body.type || "estimates";
+      documentType = typeMapping[requestedType] || requestedType;
       page = body.page || 1;
       limit = body.limit || 50;
     } catch {
@@ -61,8 +68,9 @@ Deno.serve(async (req) => {
 
     console.log(`Syncing ${documentType} from Daftra (page ${page}, limit ${limit})`);
 
-    // Fetch from Daftra API
+    // Fetch from Daftra API - استخدام الـ endpoint الصحيح
     const daftraUrl = `https://${cleanSubdomain}.daftra.com/api2/${documentType}?page=${page}&limit=${limit}`;
+    console.log(`Calling Daftra API: ${daftraUrl}`);
     
     const daftraResponse = await fetch(daftraUrl, {
       method: "GET",
