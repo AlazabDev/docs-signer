@@ -68,11 +68,11 @@ Deno.serve(async (req) => {
 
     console.log(`Syncing ${documentType} from Daftra (page ${page}, limit ${limit})`);
 
-    // Fetch from Daftra API - استخدام الـ endpoint الصحيح
-    const daftraUrl = `https://${cleanSubdomain}.daftra.com/api2/${documentType}?page=${page}&limit=${limit}`;
-    console.log(`Calling Daftra API: ${daftraUrl}`);
+    // Fetch list from Daftra API
+    const daftraListUrl = `https://${cleanSubdomain}.daftra.com/api2/${documentType}?page=${page}&limit=${limit}`;
+    console.log(`Calling Daftra API: ${daftraListUrl}`);
     
-    const daftraResponse = await fetch(daftraUrl, {
+    const daftraResponse = await fetch(daftraListUrl, {
       method: "GET",
       headers: {
         "APIKEY": daftraApiKey,
@@ -128,6 +128,33 @@ Deno.serve(async (req) => {
     };
     const mappedType = typeMap[documentType] || "quote";
 
+    // Helper function to fetch single document with items
+    async function fetchDocumentDetails(docId: string): Promise<DaftraDocument | null> {
+      try {
+        const detailUrl = `https://${cleanSubdomain}.daftra.com/api2/${documentType}/${docId}`;
+        console.log(`Fetching document details: ${detailUrl}`);
+        
+        const response = await fetch(detailUrl, {
+          method: "GET",
+          headers: {
+            "APIKEY": daftraApiKey!,
+            "Accept": "application/json",
+          },
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to fetch document ${docId}: ${response.status}`);
+          return null;
+        }
+        
+        const data = await response.json();
+        return data.data || data;
+      } catch (err) {
+        console.error(`Error fetching document ${docId}:`, err);
+        return null;
+      }
+    }
+
     // Upsert documents into Supabase
     let synced = 0;
     let itemsSynced = 0;
@@ -135,18 +162,28 @@ Deno.serve(async (req) => {
 
     for (const rawDoc of documents) {
       try {
-        // Daftra wraps each item: {Quote: {id: 314, no: "...", Client: {...}, QuoteItem: [...], ...}}
-        const doc = rawDoc.Quote || rawDoc.Invoice || rawDoc.Estimate || rawDoc;
-        const client = doc.Client || {};
-        const items = doc.QuoteItem || doc.InvoiceItem || doc.EstimateItem || [];
+        // Daftra wraps each item: {Estimate: {id: 314, no: "...", Client: {...}, ...}}
+        const listDoc = rawDoc.Quote || rawDoc.Invoice || rawDoc.Estimate || rawDoc;
         
         // Validate we have an ID
-        if (!doc.id) {
+        if (!listDoc.id) {
           console.log("Skipping document without id:", JSON.stringify(rawDoc).substring(0, 200));
           continue;
         }
         
-        const daftraId = doc.id.toString();
+        const daftraId = listDoc.id.toString();
+        
+        // ✅ جلب المستند الكامل مع العناصر من الـ API
+        const fullDocData = await fetchDocumentDetails(daftraId);
+        
+        // استخدم البيانات الكاملة إن وجدت، وإلا استخدم بيانات القائمة
+        const doc = fullDocData?.Estimate || fullDocData?.Invoice || fullDocData?.Quote || fullDocData || listDoc;
+        const client = doc.Client || {};
+        
+        // ✅ العناصر تأتي كـ InvoiceItem في الـ single document response
+        const items = doc.InvoiceItem || doc.QuoteItem || doc.EstimateItem || [];
+        
+        console.log(`Document ${daftraId} has ${items.length} items`);
         
         // Build document number
         const docNumber = doc.no || doc.number || `${mappedType.toUpperCase()}-${daftraId}`;
@@ -170,8 +207,8 @@ Deno.serve(async (req) => {
         const clientEmail = doc.client_email || client.email || null;
         
         // Extract URLs
-        const pdfUrl = doc.quote_pdf_url || doc.invoice_pdf_url || doc.pdf_url || null;
-        const htmlUrl = doc.quote_html_url || doc.invoice_html_url || doc.html_url || null;
+        const pdfUrl = doc.invoice_pdf_url || doc.quote_pdf_url || doc.pdf_url || null;
+        const htmlUrl = doc.invoice_html_url || doc.quote_html_url || doc.html_url || null;
         
         // Map payment status
         let paymentStatus: "paid" | "partial" | "unpaid" = "unpaid";
@@ -199,7 +236,7 @@ Deno.serve(async (req) => {
             payment_status: paymentStatus,
             pdf_url: pdfUrl,
             html_url: htmlUrl,
-            raw_json: rawDoc,
+            raw_json: fullDocData || rawDoc,
             synced_at: new Date().toISOString(),
           }, {
             onConflict: "daftra_id",
@@ -215,51 +252,42 @@ Deno.serve(async (req) => {
         
         synced++;
         
-        // Sync quote items if present
+        // ✅ Sync items if present
         if (Array.isArray(items) && items.length > 0 && docData?.id) {
+          // First, delete existing items for this document to avoid duplicates
+          await supabase
+            .from("quote_items")
+            .delete()
+            .eq("document_id", docData.id);
+          
           for (const item of items) {
             const itemId = item.id?.toString() || null;
             
-            // Check if item exists
-            const { data: existingItem } = await supabase
-              .from("quote_items")
-              .select("id")
-              .eq("document_id", docData.id)
-              .eq("daftra_item_id", itemId)
-              .maybeSingle();
+            // Extract item name - Daftra uses 'item' field for product name
+            const productName = item.item || item.product || item.name || item.description || "منتج/خدمة";
             
             const itemData = {
               document_id: docData.id,
               daftra_item_id: itemId,
-              product_name: item.product || item.name || item.description || "منتج/خدمة",
-              product_description: item.description || item.notes || null,
+              product_name: productName,
+              product_description: item.description || null,
               quantity: parseFloat(item.quantity) || 1,
-              unit_price: parseFloat(item.unit_price) || parseFloat(item.price) || 0,
-              total_price: parseFloat(item.total) || (parseFloat(item.quantity) * parseFloat(item.unit_price)) || 0,
+              unit_price: parseFloat(item.unit_price) || 0,
+              total_price: parseFloat(item.subtotal) || (parseFloat(item.quantity) * parseFloat(item.unit_price)) || 0,
               notes: item.notes || null,
             };
             
-            if (existingItem) {
-              // Update existing item (keep approval status)
-              await supabase
-                .from("quote_items")
-                .update({
-                  product_name: itemData.product_name,
-                  product_description: itemData.product_description,
-                  quantity: itemData.quantity,
-                  unit_price: itemData.unit_price,
-                  total_price: itemData.total_price,
-                  notes: itemData.notes,
-                })
-                .eq("id", existingItem.id);
-            } else {
-              // Insert new item
-              await supabase
-                .from("quote_items")
-                .insert(itemData);
-            }
+            console.log(`  Item: ${productName} | Qty: ${itemData.quantity} | Price: ${itemData.unit_price}`);
             
-            itemsSynced++;
+            const { error: itemError } = await supabase
+              .from("quote_items")
+              .insert(itemData);
+            
+            if (itemError) {
+              console.error(`Error inserting item:`, itemError.message);
+            } else {
+              itemsSynced++;
+            }
           }
         }
       } catch (err) {
