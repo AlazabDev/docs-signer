@@ -48,8 +48,9 @@ Deno.serve(async (req) => {
     // Parse request body for options
     let documentType = "invoices"; // افتراضياً نسحب الفواتير
     let page = 1;
-    let limit = 50;
+    let limit = 10; // ⚠️ تقليل الحد لتجنب timeout - كان 50
     let syncAll = false; // مزامنة كل الأنواع
+    let skipDetails = false; // تخطي جلب التفاصيل لتسريع المزامنة
     
     try {
       const body = await req.json();
@@ -67,7 +68,8 @@ Deno.serve(async (req) => {
         documentType = typeMapping[requestedType] || requestedType;
       }
       page = body.page || 1;
-      limit = body.limit || 50;
+      limit = Math.min(body.limit || 10, 15); // ⚠️ حد أقصى 15 مستند لكل طلب
+      skipDetails = body.skipDetails || false;
     } catch {
       // Use defaults if no body
     }
@@ -126,11 +128,17 @@ Deno.serve(async (req) => {
       };
       const mappedType = typeMap[docType] || "quote";
 
-      // Helper function to fetch single document with items
+      // Helper function to fetch single document with items (with timeout)
       async function fetchDocumentDetails(docId: string): Promise<DaftraDocument | null> {
+        // إذا كان skipDetails مفعل، نتخطى جلب التفاصيل
+        if (skipDetails) return null;
+        
         try {
           const detailUrl = `https://${cleanSubdomain}.daftra.com/api2/${docType}/${docId}`;
           console.log(`Fetching document details: ${detailUrl}`);
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
           
           const response = await fetch(detailUrl, {
             method: "GET",
@@ -138,7 +146,10 @@ Deno.serve(async (req) => {
               "APIKEY": daftraApiKey!,
               "Accept": "application/json",
             },
+            signal: controller.signal,
           });
+          
+          clearTimeout(timeoutId);
           
           if (!response.ok) {
             console.error(`Failed to fetch document ${docId}: ${response.status}`);
