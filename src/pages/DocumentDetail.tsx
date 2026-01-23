@@ -101,11 +101,12 @@ export default function DocumentDetail() {
       if (Array.isArray(rawItems)) {
         return rawItems.map((item: Record<string, unknown>, index) => ({
           id: String(item.id || index),
-          product_name: String(item.product || item.name || item.description || 'منتج/خدمة'),
+          // Daftra uses 'item' field for product name
+          product_name: String(item.item || item.product || item.product_name || item.name || item.description || 'منتج/خدمة'),
           product_description: item.description ? String(item.description) : null,
           quantity: Number(item.quantity) || 1,
           unit_price: Number(item.unit_price) || Number(item.price) || 0,
-          total_price: Number(item.total) || (Number(item.quantity) * Number(item.unit_price)) || 0,
+          total_price: Number(item.subtotal) || Number(item.total) || (Number(item.quantity) * Number(item.unit_price)) || 0,
           approval_status: null,
         }));
       }
